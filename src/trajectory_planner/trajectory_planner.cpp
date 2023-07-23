@@ -188,38 +188,89 @@ void TrajectoryPlanner_Node::pathCallback(const ros::TimerEvent& /*timer*/) {
 
 
     // std::vector<Position> eigenVectors = a_star_.fitPolynom(vehiclePose);
-    std::cout << std::endl << "----------123 __________ _________ "  << std::endl;
-    std::vector<Position> eigenVectors;
+
+    const std::vector<Point>& erstreihepoints = a_star_.geterstreiheCones();
+	const std::vector<Point>& zweireihepoints = a_star_.getzweireiheCones();
+   
+    double distancetoerstreihe = conversions::findClosestDistance(erstreihepoints);
+	double distancetozweireihe = conversions::findClosestDistance(zweireihepoints);
+	double mindistance = std::min(distancetoerstreihe, distancetozweireihe);
 
 
-
-  //  a_star_.fitmittel(vehiclePose, eigenVectors);
-     a_star_.fitcones(eigenVectors);
-
-
-    std::cout << std::endl << "eigenVectors anzahl  __________ _________ " << eigenVectors.size() << std::endl;
-
-    utils::print_position(eigenVectors);
-
-    Trajectory trajectory;
-
-     if(eigenVectors.empty()){
-        std::cout << std::endl << "trajectory anzahl " << trajectory.size() << std::endl;
+    Pose vehiclePose;
+    if (!currentVehiclePose(vehiclePose)) {
+        interface_.logWarn("Cannot compute trajectory because vehicle pose was not found in tf tree.");
         return;
-     }
-    conversions::vectortotrajectory(eigenVectors, trajectory);
-    std::cout << std::endl << "trajectory anzahl " << trajectory.size() << std::endl;
-
-    if(trajectory.empty()){
-        return;
-    }   else{
-
-        interface_.path_publisher.publish(conversions::trajectoryToPathMsg(trajectory, interface_.map_frame));
-
     }
 
 
+    int conesanzahl = a_star_.getconeszahl();
+    if (conesanzahl <=3 || mindistance < 0.7){
+    YAML::Node yaml_node = YAML::LoadFile(interface_.path_file);
+
+        // 解析yaml文件中的路径信息
+        nav_msgs::Path path_msg;
+        path_msg.header.frame_id = yaml_node["header"]["frame_id"].as<std::string>();
+
+        for (const auto& pose_node : yaml_node["poses"])
+        {
+            geometry_msgs::PoseStamped pose;
+            pose.header.frame_id = pose_node["header"]["frame_id"].as<std::string>();
+            pose.pose.orientation.w = pose_node["pose"]["orientation"]["w"].as<double>();
+            pose.pose.orientation.x = pose_node["pose"]["orientation"]["x"].as<double>();
+            pose.pose.orientation.y = pose_node["pose"]["orientation"]["y"].as<double>();
+            pose.pose.orientation.z = pose_node["pose"]["orientation"]["z"].as<double>();
+            pose.pose.position.x = pose_node["pose"]["position"]["x"].as<double>();
+            pose.pose.position.y = pose_node["pose"]["position"]["y"].as<double>();
+            pose.pose.position.z = pose_node["pose"]["position"]["z"].as<double>();
+
+            path_msg.poses.push_back(pose);
+        }
+
+            interface_.path_publisher.publish(path_msg);
+
+    }else{
+    
+    if (!conesInitialized_) {
+        interface_.logWarn("Cannot compute trajectory because no cones has been set yet.");
+        return;
+    }
+    
+        double interface_.desired_speed = 0.5;
+        std::cout << std::endl << "----------123 __________ _________ "  << std::endl;
+        std::vector<Position> eigenVectors;
+
+
+
+        //  a_star_.fitmittel(vehiclePose, eigenVectors);
+        a_star_.fitcones(eigenVectors);
+
+
+        std::cout << std::endl << "eigenVectors anzahl  __________ _________ " << eigenVectors.size() << std::endl;
+
+        utils::print_position(eigenVectors);
+
+        Trajectory trajectory;
+
+        if(eigenVectors.empty()){
+            std::cout << std::endl << "trajectory anzahl " << trajectory.size() << std::endl;
+            return;
+        }
+        conversions::vectortotrajectory(eigenVectors, trajectory);
+        std::cout << std::endl << "trajectory anzahl " << trajectory.size() << std::endl;
+
+        if(trajectory.empty()){
+            return;
+        } 
+        else{
+            interface_.path_publisher.publish(conversions::trajectoryToPathMsg(trajectory, interface_.map_frame));
+        }
+        
+    }
+
 }
+
+    
 
 
 
